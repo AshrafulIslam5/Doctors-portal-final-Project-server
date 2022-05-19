@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const app = express();
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const res = require('express/lib/response');
 require('dotenv').config();
 const port = process.env.PORT || 5000;
@@ -85,6 +85,13 @@ async function run() {
       }
     })
 
+    app.get('/booking/:id', verifyJWT, async (req, res) => { 
+      const id = req.params.id;
+      const query = { _id: ObjectId(id) }
+      const booking = await bookingCollection.findOne(query)
+      res.send(booking);
+    })
+    
     // Warning: This is not the proper way to query multiple collection. 
     // After learning more about mongodb. use aggregate, lookup, pipeline, match, group
     app.get('/available', async (req, res) => {
