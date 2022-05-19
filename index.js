@@ -184,6 +184,7 @@ async function run() {
   }
   finally {
     // await client.close();
+    // hehe
   }
 }
 run().catch(console.dir)
