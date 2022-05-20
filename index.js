@@ -5,6 +5,7 @@ const app = express();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const res = require('express/lib/response');
 require('dotenv').config();
+const stripe = require('stripe')(process.env.Stripe_Secret);
 const port = process.env.PORT || 5000;
 
 // middletier
@@ -39,11 +40,12 @@ async function run() {
     const bookingCollection = client.db('doctors_portal').collection('bookings');
     const userCollection = client.db('doctors_portal').collection('users');
     const doctorCollection = client.db('doctors_portal').collection('doctors');
-
-    const verifyAdmin = async (req, res, next) =>{
+    const paymentCollection = client.db('doctors_portal').collection('payments');
+    
+    const verifyAdmin = async (req, res, next) => {
       const initiater = req.decoded.email;
       const requesterAccount = await userCollection.findOne({ email: initiater });
-      if (requesterAccount.role === 'admin') { 
+      if (requesterAccount.role === 'admin') {
         next()
       }
       else {
@@ -85,13 +87,13 @@ async function run() {
       }
     })
 
-    app.get('/booking/:id', verifyJWT, async (req, res) => { 
+    app.get('/booking/:id', verifyJWT, async (req, res) => {
       const id = req.params.id;
       const query = { _id: ObjectId(id) }
       const booking = await bookingCollection.findOne(query)
       res.send(booking);
     })
-    
+
     // Warning: This is not the proper way to query multiple collection. 
     // After learning more about mongodb. use aggregate, lookup, pipeline, match, group
     app.get('/available', async (req, res) => {
@@ -131,6 +133,21 @@ async function run() {
       }
       const result = await bookingCollection.insertOne(booking);
       res.send({ success: true, result })
+    });
+
+    app.patch('/booking/:id', verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const payment = req.body;
+      const query = { _id: ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          paid: true,
+          transactionId: payment.transactionId
+        }
+      }
+      const result = await paymentCollection.insertOne(payment);
+      const updatedBooking = await bookingCollection.updateOne(query, updatedDoc);
+      res.send(updatedBooking)
     })
 
     app.get('/user', verifyJWT, async (req, res) => {
@@ -147,12 +164,12 @@ async function run() {
 
     app.put('/user/admin/:email', verifyJWT, verifyAdmin, async (req, res) => {
       const email = req.params.email;
-        const filter = { email: email };
-        const updatedDoc = {
-          $set: { role: 'admin' }
-        };
-        const result = await userCollection.updateOne(filter, updatedDoc);
-        res.send(result);
+      const filter = { email: email };
+      const updatedDoc = {
+        $set: { role: 'admin' }
+      };
+      const result = await userCollection.updateOne(filter, updatedDoc);
+      res.send(result);
     });
 
 
@@ -182,11 +199,24 @@ async function run() {
       res.send(result)
     })
 
-    app.post('/doctor',verifyJWT, verifyAdmin, async (req, res) => {
+    app.post('/doctor', verifyJWT, verifyAdmin, async (req, res) => {
       const doctor = req.body;
       const result = await doctorCollection.insertOne(doctor);
       res.send(result);
+    });
+
+    app.post('/create-payment-intent', verifyJWT, async (req, res) => {
+      const service = req.body;
+      const price = service.price;
+      const amount = price * 100;
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: 'usd',
+        payment_method_types: ['card']
+      })
+      res.send({ clientSecret: paymentIntent.client_secret })
     })
+
 
   }
   finally {
